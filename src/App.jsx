@@ -7,13 +7,13 @@ import React, { useState, useEffect } from 'react';
 
 // Initialize Firebase (replace with your config)
 const firebaseConfig = {
-  apiKey: 'AIzaSyBNstZc2xeZHpwOGEJxPvwNk_24CD1sghI',
-  authDomain: 'institutions-game.firebaseapp.com',
-  projectId: 'institutions-game',
-  storageBucket: 'institutions-game.firebasestorage.app',
-  messagingSenderId: '114438605460',
-  appId: '1:114438605460:web:bd6cf176c4c905652e8281',
-  measurementId: 'G-L2D0SDECBJ',
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
