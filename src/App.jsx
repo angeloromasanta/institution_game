@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, get } from 'firebase/database';
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 // Initialize Firebase (replace with your config)
 const firebaseConfig = {
@@ -350,30 +351,40 @@ function Admin() {
 
 // Student Component
 function Student() {
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [team, setTeam] = useState(1);
-  const [playerId, setPlayerId] = useState(null);
+  const [playerId, setPlayerId] = useState(() => localStorage.getItem('playerId'));
   const [gameState, setGameState] = useState({ phase: 'setup' });
   const [contribution, setContribution] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const [localPoints, setLocalPoints] = useState(0);
 
   useEffect(() => {
     const gameRef = ref(db, 'game');
     onValue(gameRef, (snapshot) => {
       if (snapshot.exists()) {
-        setGameState(snapshot.val());
-        // Reset submitted state when phase changes to voting
-        if (snapshot.val().phase === 'voting') {
+        const newGameState = snapshot.val();
+        setGameState(newGameState);
+        
+        // Update localPoints when player's points change
+        if (playerId && newGameState.players?.[playerId]) {
+          setLocalPoints(newGameState.players[playerId].points || 0);
+        }
+        
+        // Reset submitted state only when phase changes to voting
+        if (newGameState.phase === 'voting' && gameState.phase !== 'voting') {
           setSubmitted(false);
           setContribution(0);
         }
       }
     });
-  }, []);
+  }, [playerId, gameState.phase]); 
 
   const register = () => {
     if (!name) return;
     const newPlayerId = Date.now().toString();
+    localStorage.setItem('playerId', newPlayerId);
     setPlayerId(newPlayerId);
     const playerData = {
       name,
@@ -384,14 +395,43 @@ function Student() {
     set(ref(db, `game/players/${newPlayerId}`), playerData);
   };
 
-  const submitVote = () => {
-    if (playerId) {
-      set(
-        ref(db, `game/players/${playerId}/currentVote`),
-        parseInt(contribution)
-      );
-      setSubmitted(true);
+  // Modify the contribution handler to use localPoints
+  const handleContribution = (value) => {
+    // Ensure value is a number and not NaN
+    const numValue = Number(value);
+    if (isNaN(numValue)) {
+      setContribution(0);
+      return;
     }
+    
+    // Clamp value between 0 and available points
+    const newValue = Math.min(Math.max(0, numValue), Math.floor(localPoints));
+    setContribution(newValue);
+  };
+  
+
+  // Update the vote submission
+  const submitVote = () => {
+    if (!playerId) return;
+    
+    // Ensure contribution is valid
+    const vote = Math.min(Math.max(0, Number(contribution)), Math.floor(localPoints));
+    if (isNaN(vote)) {
+      alert('Please enter a valid number');
+      return;
+    }
+    
+    set(ref(db, `game/players/${playerId}/currentVote`), vote);
+    setSubmitted(true);
+  };
+
+  // Add this function to handle player logout
+  const handleLogout = () => {
+    localStorage.removeItem('playerId');
+    setPlayerId(null);
+    setName('');
+    setTeam(1);
+    navigate('/');
   };
 
   const renderStudentInfo = () => {
@@ -403,9 +443,15 @@ function Student() {
         <div className="text-gray-600">Team: {player.team}</div>
         {!gameState.settings?.hidePoints && (
           <div className="text-gray-600">
-            Points: {player.points?.toFixed(1)}
+            Points: {localPoints.toFixed(1)}
           </div>
         )}
+        <button
+          onClick={handleLogout}
+          className="mt-4 text-red-600 hover:text-red-800"
+        >
+          Logout
+        </button>
       </div>
     );
   };
@@ -466,52 +512,58 @@ function Student() {
           </div>
         );
 
-      case 'voting':
-        if (!gameState.players?.[playerId]) return null;
-        const player = gameState.players[playerId];
-        return (
-          <div className="bg-white p-6 rounded-lg shadow space-y-6">
-            <h2 className="text-xl font-bold">
-              Round {gameState.currentRound}
-            </h2>
-            {!gameState.settings?.hidePoints && (
-              <div className="text-gray-600">
-                Your current points: {player.points?.toFixed(1)}
-              </div>
-            )}
-            {!submitted ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block mb-2">
-                    How much would you like to contribute?
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max={Math.floor(player.points)}
-                    value={contribution}
-                    onChange={(e) =>
-                      setContribution(
-                        Math.min(e.target.value, Math.floor(player.points))
-                      )
-                    }
-                    className="w-full p-2 border rounded"
-                  />
+        case 'voting':
+          if (!gameState.players?.[playerId]) return null;
+          const player = gameState.players[playerId];
+          return (
+            <div className="bg-white p-6 rounded-lg shadow space-y-6">
+              <h2 className="text-xl font-bold">
+                Round {gameState.currentRound}
+              </h2>
+              {!gameState.settings?.hidePoints && (
+                <div className="text-gray-600">
+                  Your current points: {localPoints.toFixed(1)}
                 </div>
-                <button
-                  onClick={submitVote}
-                  className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
-                >
-                  Submit Points
-                </button>
-              </div>
-            ) : (
-              <div className="text-green-600 font-medium">
-                Points sent! Waiting for other players...
-              </div>
-            )}
-          </div>
-        );
+              )}
+              {!submitted ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block mb-2">
+                      How much would you like to contribute?
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.floor(localPoints)}
+                      value={contribution}
+                      onChange={(e) => handleContribution(Number(e.target.value))}
+                      onKeyDown={(e) => {
+                        // Prevent non-numeric input
+                        if (
+                          !/[\d\.]/.test(e.key) &&
+                          !['Backspace', 'ArrowLeft', 'ArrowRight', 'Tab', 'Delete'].includes(e.key)
+                        ) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <button
+                    onClick={submitVote}
+                    disabled={contribution < 0 || contribution > localPoints}
+                    className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Submit Points
+                  </button>
+                </div>
+              ) : (
+                <div className="text-green-600 font-medium">
+                  Points sent! Waiting for other players...
+                </div>
+              )}
+            </div>
+          );
 
       case 'results':
         if (!gameState.players?.[playerId]) return null;
