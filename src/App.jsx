@@ -368,20 +368,26 @@ useEffect(() => {
 
 
  // Change this useEffect in the Student component
+// In the Student component, modify the useEffect that listens for game state changes:
+
 useEffect(() => {
   const gameRef = ref(db, 'game');
   const unsubscribe = onValue(gameRef, (snapshot) => {
     if (snapshot.exists()) {
       const newGameState = snapshot.val();
+      const oldPhase = gameState.phase;
       setGameState(newGameState);
       
-      // If we have a playerId and we're in voting phase, check if we've already submitted
-      if (playerId && newGameState.phase === 'voting' && newGameState.players?.[playerId]) {
-        // If currentVote is not null, they've already submitted
+      // If phase changed from results to voting, explicitly reset submission state
+      if (oldPhase === 'results' && newGameState.phase === 'voting') {
+        setSubmitted(false);
+        setContribution(0);
+      }
+      // Regular check for submission status during voting phase
+      else if (playerId && newGameState.phase === 'voting' && newGameState.players?.[playerId]) {
         const alreadySubmitted = newGameState.players[playerId].currentVote !== null;
         setSubmitted(alreadySubmitted);
         
-        // Only reset contribution if they haven't submitted yet
         if (!alreadySubmitted) {
           setContribution(0);
         }
@@ -389,9 +395,8 @@ useEffect(() => {
     }
   });
   
-  // Clean up listener when component unmounts
   return () => unsubscribe();
-}, []); // Remove playerId from dependency array
+}, []); // Empty dependency array
 
 // Modify the register function to save to localStorage
 const register = () => {
@@ -425,11 +430,10 @@ const register = () => {
       <div className="bg-white p-4 rounded-lg shadow mb-6">
         <div className="font-medium">Name: {player.name}</div>
         <div className="text-gray-600">Team: {player.team}</div>
-        {!gameState.settings?.hidePoints && (
-          <div className="text-gray-600">
-            Points: {player.points?.toFixed(1)}
-          </div>
-        )}
+        <div className="text-gray-600">
+  Points: {player.points?.toFixed(1)}
+</div>
+
       </div>
     );
   };
@@ -498,11 +502,9 @@ const register = () => {
             <h2 className="text-xl font-bold">
               Round {gameState.currentRound}
             </h2>
-            {!gameState.settings?.hidePoints && (
-              <div className="text-gray-600">
-                Your current points: {player.points?.toFixed(1)}
-              </div>
-            )}
+            <div className="text-gray-600">
+  Your current points: {player.points?.toFixed(1)}
+</div>
             {!submitted ? (
               <div className="space-y-4">
                 {/* Replace this section in the Student component, in the 'voting' phase render */}
@@ -557,11 +559,9 @@ const register = () => {
               Round change: {playerResults.lastRoundChange > 0 ? '+' : ''}
               {playerResults.lastRoundChange?.toFixed(1)} points
             </div>
-            {!gameState.settings?.hidePoints && (
-              <div className="text-gray-600">
-                Your total points: {playerResults.points?.toFixed(1)}
-              </div>
-            )}
+            <div className="text-gray-600">
+  Your current points: {player.points?.toFixed(1)}
+</div>
             <div className="text-gray-600">Waiting for next round...</div>
           </div>
         );
