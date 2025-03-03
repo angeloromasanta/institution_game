@@ -367,20 +367,31 @@ useEffect(() => {
 }, []);
 
 
-  useEffect(() => {
-    const gameRef = ref(db, 'game');
-    onValue(gameRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setGameState(snapshot.val());
-        // Reset submitted state when phase changes to voting
-        if (snapshot.val().phase === 'voting') {
-          setSubmitted(false);
+ // Change this useEffect in the Student component
+useEffect(() => {
+  const gameRef = ref(db, 'game');
+  const unsubscribe = onValue(gameRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const newGameState = snapshot.val();
+      setGameState(newGameState);
+      
+      // If we have a playerId and we're in voting phase, check if we've already submitted
+      if (playerId && newGameState.phase === 'voting' && newGameState.players?.[playerId]) {
+        // If currentVote is not null, they've already submitted
+        const alreadySubmitted = newGameState.players[playerId].currentVote !== null;
+        setSubmitted(alreadySubmitted);
+        
+        // Only reset contribution if they haven't submitted yet
+        if (!alreadySubmitted) {
           setContribution(0);
         }
       }
-    });
-  }, []);
-
+    }
+  });
+  
+  // Clean up listener when component unmounts
+  return () => unsubscribe();
+}, []); // Remove playerId from dependency array
 
 // Modify the register function to save to localStorage
 const register = () => {
