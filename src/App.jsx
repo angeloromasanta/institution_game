@@ -494,26 +494,27 @@ const register = () => {
             )}
             {!submitted ? (
               <div className="space-y-4">
-                <div>
-                  <label className="block mb-2">
-                    How much would you like to contribute?
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max={Math.floor(player.points)}
-                    value={contribution}
-// Replace the contribution input's onChange handler with this:
-onChange={(e) => {
-  // Parse as a number, default to 0 if NaN
-  const inputValue = parseInt(e.target.value) || 0;
-  // Ensure it's between 0 and the player's points
-  const validValue = Math.min(Math.max(0, inputValue), Math.floor(player.points));
-  setContribution(validValue);
-}}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
+                {/* Replace this section in the Student component, in the 'voting' phase render */}
+<div>
+  <label className="block mb-2">
+    How much would you like to contribute? ({contribution})
+  </label>
+  <div className="flex items-center space-x-2">
+    <span>0</span>
+    <input
+      type="range"
+      min="0"
+      max={Math.floor(player.points)}
+      value={contribution}
+      onChange={(e) => {
+        const value = parseInt(e.target.value);
+        setContribution(value);
+      }}
+      className="w-full"
+    />
+    <span>{Math.floor(player.points)}</span>
+  </div>
+</div>
                 <button
                   onClick={submitVote}
                   className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
