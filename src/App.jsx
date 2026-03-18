@@ -39,11 +39,32 @@ function buildPlayerKey(playerName = '', teamNumber = 1) {
   return `team${teamNumber}-${safeName}`;
 }
 
+// Auto-assign students to teams while keeping teams balanced
+function pickBalancedTeam(players = {}, numTeams = 1) {
+  const totalTeams = Math.max(1, numTeams || 1);
+  const counts = Array.from({ length: totalTeams }, () => 0);
+
+  Object.values(players || {}).forEach((player) => {
+    if (!player || typeof player.team !== 'number') return;
+    const idx = Math.min(Math.max(Math.floor(player.team) - 1, 0), totalTeams - 1);
+    counts[idx] += 1;
+  });
+
+  const min = Math.min(...counts);
+  const candidates = counts
+    .map((count, idx) => ({ count, team: idx + 1 }))
+    .filter((entry) => entry.count === min);
+
+  if (candidates.length === 0) return 1;
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  return pick.team;
+}
+
 // Admin Component
 function Admin() {
   const [gameState, setGameState] = useState({
     phase: 'setup',
-    settings: { numTeams: 3, initialPoints: 20, multiplier: 2, hidePoints: true },
+    settings: { numTeams: 3, initialPoints: 20, multiplier: 2, hidePoints: true, randomizeTeams: false },
     players: {},
     currentRound: 1,
   });
@@ -68,7 +89,7 @@ function Admin() {
   const resetGame = () => {
     updateGame({
       phase: 'setup',
-      settings: { numTeams: 3, initialPoints: 20, multiplier: 2, hidePoints: false },
+      settings: { numTeams: 3, initialPoints: 20, multiplier: 2, hidePoints: false, randomizeTeams: false },
       players: {},
       currentRound: 1,
     });
@@ -315,24 +336,43 @@ function Admin() {
                   min="1"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block">Multiplier:</label>
-                <input
-                  type="number"
-                  value={gameState.settings.multiplier}
+            <div className="space-y-2">
+              <label className="block">Multiplier:</label>
+              <input
+                type="number"
+                value={gameState.settings.multiplier}
                   onChange={(e) =>
                     updateGame({ settings: { ...gameState.settings, multiplier: parseFloat(e.target.value) } })
                   }
                   className="w-full p-2 border rounded"
                   min="0"
-                  step="0.1"
-                />
-              </div>
+                step="0.1"
+              />
             </div>
-            <button
-              onClick={() => updateGame({ phase: 'registration' })}
-              className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
-            >
+            <div className="space-y-2 md:col-span-2">
+              <label className="block">Team Assignment:</label>
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={gameState.settings.randomizeTeams}
+                  onChange={(e) =>
+                    updateGame({
+                      settings: { ...gameState.settings, randomizeTeams: e.target.checked },
+                    })
+                  }
+                  className="form-checkbox"
+                />
+                <span>Randomize teams during registration</span>
+              </label>
+              <p className="text-xs text-gray-500">
+                When enabled, students only enter their names and are auto-assigned to a team.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => updateGame({ phase: 'registration' })}
+            className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
+          >
               Start Registration
             </button>
           </div>
@@ -492,29 +532,49 @@ function Student() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    const desiredKey = buildPlayerKey(trimmedName, team);
     const players = gameState.players || {};
+    const normalizedName = trimmedName.toLowerCase();
+    const randomizeTeams = Boolean(gameState.settings?.randomizeTeams);
+    const totalTeams = gameState.settings?.numTeams || 1;
+    const entries = Object.entries(players);
 
-    // Prefer a direct key match (new deterministic IDs), then fall back to legacy IDs
-    const directMatch = players[desiredKey];
-    const matchingEntry =
-      directMatch && buildPlayerKey(directMatch.name || '', directMatch.team) === desiredKey
-        ? [desiredKey, directMatch]
-        : Object.entries(players).find(
-            ([, player]) => buildPlayerKey(player.name || '', player.team) === desiredKey
-          );
+    let existingEntry = null;
+    let assignedTeam;
 
-    const resolvedId = matchingEntry ? matchingEntry[0] : desiredKey;
+    if (randomizeTeams) {
+      existingEntry = entries.find(
+        ([, player]) => (player?.name || '').trim().toLowerCase() === normalizedName
+      );
+      assignedTeam =
+        existingEntry?.[1]?.team ?? pickBalancedTeam(players, totalTeams);
+    } else {
+      assignedTeam = team;
+    }
+
+    const desiredKey = buildPlayerKey(trimmedName, assignedTeam);
+
+    if (!existingEntry) {
+      const direct = players[desiredKey];
+      if (direct && buildPlayerKey(direct.name || '', direct.team) === desiredKey) {
+        existingEntry = [desiredKey, direct];
+      } else {
+        existingEntry = entries.find(
+          ([, player]) => buildPlayerKey(player?.name || '', player?.team) === desiredKey
+        );
+      }
+    }
+
+    const resolvedId = existingEntry ? existingEntry[0] : desiredKey;
+    const record = existingEntry ? existingEntry[1] : null;
 
     setPlayerId(resolvedId);
     localStorage.setItem('playerId', resolvedId);
     setSubmitted(false);
     setContribution(0);
 
-    if (matchingEntry) {
-      const [, record] = matchingEntry;
-      if (record.name !== trimmedName || record.team !== team) {
-        const updatedRecord = { ...record, name: trimmedName, team };
+    if (record) {
+      if (record.name !== trimmedName || record.team !== assignedTeam) {
+        const updatedRecord = { ...record, name: trimmedName, team: assignedTeam };
         set(ref(db, `game/players/${resolvedId}`), updatedRecord);
       }
       return;
@@ -522,7 +582,7 @@ function Student() {
 
     set(ref(db, `game/players/${resolvedId}`), {
       name: trimmedName,
-      team,
+      team: assignedTeam,
       points: gameState.settings?.initialPoints || 20,
       currentVote: null,
     });
@@ -552,11 +612,14 @@ function Student() {
 
     // Show registration form when not yet joined (and game is running)
     if (!playerId && gameState.phase !== 'setup') {
+      const randomizeTeams = Boolean(gameState.settings?.randomizeTeams);
       return (
         <div className="space-y-4">
           <h2 className="text-2xl font-bold">Register</h2>
           <p className="text-sm text-gray-500">
-            Already registered? Enter the same name and team number to rejoin.
+            {randomizeTeams
+              ? 'Already registered? Enter the same name to rejoin your assigned team.'
+              : 'Already registered? Enter the same name and team number to rejoin.'}
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -567,17 +630,19 @@ function Student() {
               onKeyDown={(e) => e.key === 'Enter' && register()}
               className="flex-1 p-2 border rounded min-w-0"
             />
-            <select
-              value={team}
-              onChange={(e) => setTeam(parseInt(e.target.value))}
-              className="p-2 border rounded"
-            >
-              {[...Array(gameState.settings?.numTeams || 0)].map((_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  Team {i + 1}
-                </option>
-              ))}
-            </select>
+            {!randomizeTeams && (
+              <select
+                value={team}
+                onChange={(e) => setTeam(parseInt(e.target.value))}
+                className="p-2 border rounded"
+              >
+                {[...Array(gameState.settings?.numTeams || 0)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    Team {i + 1}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               onClick={register}
               className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
@@ -585,6 +650,11 @@ function Student() {
               Join
             </button>
           </div>
+          {randomizeTeams && (
+            <p className="text-xs text-gray-500">
+              Teams will be assigned automatically—choose a unique name to avoid conflicts.
+            </p>
+          )}
         </div>
       );
     }
