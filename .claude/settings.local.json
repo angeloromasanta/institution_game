@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find 'C:\\\\Projects\\\\Ecosystem game\\\\institution_game' -type f -name .env* -o -name *.env*)",
+      "Bash(npm run:*)",
+      "Bash(npx vite:*)"
+    ]
+  }
+}
